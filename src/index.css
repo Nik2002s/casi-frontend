@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CASI Design Tokens ─────────────────────────────────────────────── */
+
+html, body { height: 100%; margin: 0; }
+body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+
+.theme-dark {
+  --bg: #080C14; --bg2: #0B1220; --bg3: #080C14;
+  --card: #0F1623; --card2: #151E2E;
+  --line: #1E2D42; --line2: #2A3F5C;
+  --text: #F1F5F9; --text-strong: #FFFFFF;
+  --text-muted: #94A3B8; --text-dim: #64748B; --text-faint: #475569;
+  color: var(--text);
+}
+.theme-light {
+  --bg: #F6F7FB; --bg2: #FFFFFF; --bg3: #FFFFFF;
+  --card: #FFFFFF; --card2: #F8FAFC;
+  --line: #E5E7EB; --line2: #CBD5E1;
+  --text: #1E293B; --text-strong: #0F172A;
+  --text-muted: #475569; --text-dim: #64748B; --text-faint: #94A3B8;
+  color: var(--text);
+}
+
+:root {
+  --accent: #3B82F6; --accent-fg: #FFFFFF;
+  --accent-bg: rgba(59,130,246,0.1); --accent-ring: rgba(59,130,246,0.25);
+}
+.accent-teal   { --accent:#14B8A6; --accent-bg:rgba(20,184,166,0.1);  --accent-ring:rgba(20,184,166,0.25); }
+.accent-violet { --accent:#8B5CF6; --accent-bg:rgba(139,92,246,0.1);  --accent-ring:rgba(139,92,246,0.25); }
+.accent-rose   { --accent:#F43F5E; --accent-bg:rgba(244,63,94,0.1);   --accent-ring:rgba(244,63,94,0.25); }
+.accent-amber  { --accent:#F59E0B; --accent-bg:rgba(245,158,11,0.1);  --accent-ring:rgba(245,158,11,0.25); }
+
+.panel       { background: var(--card); border: 1px solid var(--line); }
+.panel-inner { background: var(--card2); border: 1px solid var(--line); }
+.theme-dark  .panel { box-shadow: inset 0 1px 0 rgba(255,255,255,0.03); }
+.theme-light .panel { box-shadow: 0 1px 2px rgba(15,23,42,0.04); }
+
+.bg-accent   { background: var(--accent) !important; color: var(--accent-fg) !important; }
+.text-accent { color: var(--accent) !important; }
+
+.theme-dark  .grid-dots { background-image: radial-gradient(rgba(255,255,255,0.04) 1px, transparent 1px); background-size: 16px 16px; }
+.theme-light .grid-dots { background-image: radial-gradient(rgba(15,23,42,0.08) 1px, transparent 1px); background-size: 16px 16px; }
+
+.scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.theme-dark  .scrollbar-thin::-webkit-scrollbar-thumb { background: #1c2742; border-radius: 4px; }
+.theme-light .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+
+@keyframes casi-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

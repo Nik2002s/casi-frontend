@@ -63,10 +63,31 @@ jobs:
           docker push ${{ secrets.DOCKER_USERNAME }}/casi-frontend:${{ steps.version.outputs.NEW_VERSION }}
 
 
-
       - name: Deploy to Railway
         run: |
-          npm i -g @railway/cli
-          export RAILWAY_TOKEN=${{ secrets.RAILWAY_TOKEN }}
-          railway up --ci --service ${{ secrets.RAILWAY_SERVICE_NAME }} \
-            --dockerImage ${{ secrets.DOCKER_USERNAME }}/casi-frontend:${{ steps.version.outputs.NEW_VERSION }}
+          curl -s -X POST https://backboard.railway.app/graphql/v2 \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -d '{
+              "query": "mutation serviceInstanceUpdateSettings($input: ServiceInstanceUpdateSettingsInput!) { serviceInstanceUpdateSettings(input: $input) }",
+              "variables": {
+                "input": {
+                  "serviceId": "${{ secrets.RAILWAY_SERVICE_ID }}",
+                  "source": {
+                    "image": "${{ secrets.DOCKER_USERNAME }}/casi-frontend:${{ steps.version.outputs.NEW_VERSION }}"
+                  }
+                }
+              }
+            }'
+      
+          curl -s -X POST https://backboard.railway.app/graphql/v2 \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
+            -d '{
+              "query": "mutation deploymentCreate($input: DeploymentCreateInput!) { deploymentCreate(input: $input) { id } }",
+              "variables": {
+                "input": {
+                  "serviceId": "${{ secrets.RAILWAY_SERVICE_ID }}"
+                }
+              }
+            }'

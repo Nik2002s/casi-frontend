@@ -61,7 +61,7 @@ jobs:
       - name: Push Image
         run: |
           docker push ${{ secrets.DOCKER_USERNAME }}/casi-frontend:${{ steps.version.outputs.NEW_VERSION }}
-
+##Deploy to railway
 
       - name: Deploy to Railway
         env:

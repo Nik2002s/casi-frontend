@@ -64,30 +64,20 @@ jobs:
 
 
       - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+          ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+          DOCKER_IMAGE_URL: ${{ secrets.DOCKER_USERNAME }}/casi-frontend:${{ steps.version.outputs.NEW_VERSION }}
         run: |
-          curl -s -X POST https://backboard.railway.app/graphql/v2 \
+          # Step 1: Update the Docker image source
+          curl --fail --silent -X POST "https://backboard.railway.com/graphql/v2" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d '{
-              "query": "mutation serviceInstanceUpdateSettings($input: ServiceInstanceUpdateSettingsInput!) { serviceInstanceUpdateSettings(input: $input) }",
-              "variables": {
-                "input": {
-                  "serviceId": "${{ secrets.RAILWAY_SERVICE_ID }}",
-                  "source": {
-                    "image": "${{ secrets.DOCKER_USERNAME }}/casi-frontend:${{ steps.version.outputs.NEW_VERSION }}"
-                  }
-                }
-              }
-            }'
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -d "{\"query\":\"mutation ServiceInstanceUpdate(\$serviceId: String!, \$environmentId: String!, \$input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(serviceId: \$serviceId, environmentId: \$environmentId, input: \$input) }\",\"variables\":{\"serviceId\":\"$SERVICE_ID\",\"environmentId\":\"$ENVIRONMENT_ID\",\"input\":{\"source\":{\"image\":\"$DOCKER_IMAGE_URL\"}}}}"
       
-          curl -s -X POST https://backboard.railway.app/graphql/v2 \
+          # Step 2: Deploy the new image
+          curl --fail --silent -X POST "https://backboard.railway.com/graphql/v2" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.RAILWAY_TOKEN }}" \
-            -d '{
-              "query": "mutation deploymentCreate($input: DeploymentCreateInput!) { deploymentCreate(input: $input) { id } }",
-              "variables": {
-                "input": {
-                  "serviceId": "${{ secrets.RAILWAY_SERVICE_ID }}"
-                }
-              }
-            }'
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -d "{\"query\":\"mutation serviceInstanceDeployV2(\$serviceId: String!, \$environmentId: String!) { serviceInstanceDeployV2(serviceId: \$serviceId, environmentId: \$environmentId) }\",\"variables\":{\"serviceId\":\"$SERVICE_ID\",\"environmentId\":\"$ENVIRONMENT_ID\"}}"

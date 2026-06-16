@@ -67,5 +67,5 @@ jobs:
         run: |
           npm i -g @railway/cli
           export RAILWAY_TOKEN=${{ secrets.RAILWAY_TOKEN }}
-          railway service update --image ${{ secrets.DOCKER_USERNAME }}/casi-frontend:${{ steps.version.outputs.NEW_VERSION }}
+          railway service update  -- --image ${{ secrets.DOCKER_USERNAME }}/casi-frontend:${{ steps.version.outputs.NEW_VERSION }}
 

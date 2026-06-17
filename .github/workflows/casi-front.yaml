@@ -30,6 +30,11 @@ jobs:
           echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
           echo "Generated version: ${NEW_VERSION}"
 
+      - name: Dependabot Dependency Scan
+        run: |
+          npm install
+          npm audit --audit-level=high
+
       - name: Docker Login
         uses: docker/login-action@v2
         with:

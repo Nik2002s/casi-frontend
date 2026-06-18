@@ -64,8 +64,8 @@ jobs:
       - name: Deploy to Railway
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
-          ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+          SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID_QA }}
+          ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID_QA }}
           DOCKER_IMAGE_URL: ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}
         run: |
           curl --fail --silent -X POST "https://backboard.railway.com/graphql/v2" \

@@ -1,114 +1,100 @@
 name: Casi Frontend Workflow for QA
 
 on:
-workflow_dispatch:
-
-push:
-branches:
-- main
+  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
-build:
-runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-```
-steps:
-  - name: Checkout Repository
-    uses: actions/checkout@v4
-    with:
-      fetch-depth: 0
+      - name: Generate Version
+        id: version
+        run: |
+          BASE_VERSION="3.4.0"
+          COMMIT_COUNT=$(git rev-list --count HEAD)
 
-  - name: Generate Version
-    id: version
-    run: |
-      BASE_VERSION="3.4.0"
-      COMMIT_COUNT=$(git rev-list --count HEAD)
+          IFS='.' read -r major minor patch <<< "$BASE_VERSION"
+          NEW_PATCH=$((patch + COMMIT_COUNT))
+          NEW_VERSION="${major}.${minor}.${NEW_PATCH}"
 
-      IFS='.' read -r major minor patch <<< "$BASE_VERSION"
-      NEW_PATCH=$((patch + COMMIT_COUNT))
-      NEW_VERSION="${major}.${minor}.${NEW_PATCH}"
+          echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "Generated version: ${NEW_VERSION}"
 
-      echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
-      echo "Generated version: ${NEW_VERSION}"
+      - name: Docker Login
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-  - name: Docker Login
-    uses: docker/login-action@v2
-    with:
-      username: ${{ secrets.DOCKER_USERNAME }}
-      password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Docker Build
+        run: |
+          docker build \
+            --build-arg VITE_FIREBASE_API_KEY="${{ secrets.VITE_FIREBASE_API_KEY }}" \
+            --build-arg VITE_FIREBASE_AUTH_DOMAIN="${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" \
+            --build-arg VITE_FIREBASE_PROJECT_ID="${{ secrets.VITE_FIREBASE_PROJECT_ID }}" \
+            --build-arg VITE_FIREBASE_STORAGE_BUCKET="${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" \
+            --build-arg VITE_FIREBASE_MESSAGING_SENDER_ID="${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" \
+            --build-arg VITE_FIREBASE_APP_ID="${{ secrets.VITE_FIREBASE_APP_ID }}" \
+            --build-arg VITE_FIREBASE_MEASUREMENT_ID="${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}" \
+            -t "${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}" .
 
-  - name: Docker Build
-    run: |
-      docker build \
-        --build-arg VITE_FIREBASE_API_KEY="${{ secrets.VITE_FIREBASE_API_KEY }}" \
-        --build-arg VITE_FIREBASE_AUTH_DOMAIN="${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" \
-        --build-arg VITE_FIREBASE_PROJECT_ID="${{ secrets.VITE_FIREBASE_PROJECT_ID }}" \
-        --build-arg VITE_FIREBASE_STORAGE_BUCKET="${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" \
-        --build-arg VITE_FIREBASE_MESSAGING_SENDER_ID="${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" \
-        --build-arg VITE_FIREBASE_APP_ID="${{ secrets.VITE_FIREBASE_APP_ID }}" \
-        --build-arg VITE_FIREBASE_MEASUREMENT_ID="${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}" \
-        -t "${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}" .
+      - name: Run Trivy Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}
+          format: json
+          output: trivy-report.json
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          ignore-unfixed: true
+        continue-on-error: true
 
-  - name: Run Trivy Scan
-    uses: aquasecurity/trivy-action@master
-    with:
-      image-ref: ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}
-      format: json
-      output: trivy-report.json
-      severity: CRITICAL,HIGH
-      exit-code: 1
-      ignore-unfixed: true
-    continue-on-error: true
+      - name: Push Image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}
 
-  - name: Push Image
-    run: |
-      docker push ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}
+      - name: Deploy to Railway
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+          ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
+          DOCKER_IMAGE_URL: ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}
+        run: |
+          curl --fail --silent -X POST "https://backboard.railway.com/graphql/v2" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -d "{\"query\":\"mutation ServiceInstanceUpdate(\$serviceId: String!, \$environmentId: String!, \$input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(serviceId: \$serviceId, environmentId: \$environment_ID, input: \$input) }\",\"variables\":{\"serviceId\":\"$SERVICE_ID\",\"environmentId\":\"$ENVIRONMENT_ID\",\"input\":{\"source\":{\"image\":\"$DOCKER_IMAGE_URL\"}}}}"
 
-  - name: Deploy to Railway
-    env:
-      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-      SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
-      ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
-      DOCKER_IMAGE_URL: ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}
+          curl --fail --silent -X POST "https://backboard.railway.com/graphql/v2" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -d "{\"query\":\"mutation serviceInstanceDeployV2(\$serviceId: String!, \$environmentId: String!) { serviceInstanceDeployV2(serviceId: \$SERVICE_ID, environmentId: \$ENVIRONMENT_ID) }\",\"variables\":{\"serviceId\":\"$SERVICE_ID\",\"environmentId\":\"$ENVIRONMENT_ID\"}}"
 
-    run: |
-      curl --fail --silent -X POST "https://backboard.railway.com/graphql/v2" \
-        -H "Content-Type: application/json" \
-        -H "Authorization: Bearer $RAILWAY_TOKEN" \
-        -d "{\"query\":\"mutation ServiceInstanceUpdate(\$serviceId: String!, \$environmentId: String!, \$input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(serviceId: \$serviceId, environmentId: \$environmentId, input: \$input) }\",\"variables\":{\"serviceId\":\"$SERVICE_ID\",\"environmentId\":\"$ENVIRONMENT_ID\",\"input\":{\"source\":{\"image\":\"$DOCKER_IMAGE_URL\"}}}}"
+  manual-approval:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Wait for Approval
+        run: echo "Approval required before PROD"
 
-      curl --fail --silent -X POST "https://backboard.railway.com/graphql/v2" \
-        -H "Content-Type: application/json" \
-        -H "Authorization: Bearer $RAILWAY_TOKEN" \
-        -d "{\"query\":\"mutation serviceInstanceDeployV2(\$serviceId: String!, \$environmentId: String!) { serviceInstanceDeployV2(serviceId: \$serviceId, environmentId: \$environmentId) }\",\"variables\":{\"serviceId\":\"$SERVICE_ID\",\"environmentId\":\"$ENVIRONMENT_ID\"}}"
-```
-
-manual-approval:
-needs: build
-
-```
-runs-on: ubuntu-latest
-
-environment:
-  name: production
-
-steps:
-  - name: Wait for Approval
-    run: echo "Approval required before PROD"
-```
-
-trigger-prod:
-needs: manual-approval
-
-```
-runs-on: ubuntu-latest
-
-steps:
-  - name: Trigger Prod Workflow
-    run: |
-      curl -X POST \
-        -H "Authorization: token ${{ secrets.GH_TOKEN }}" \
-        -H "Accept: application/vnd.github+json" \
-        https://api.github.com/repos/${{ github.repository }}/actions/workflows/casi-frontend-prod.yaml/dispatches \
-        -d '{"ref":"main"}'
-```
+  trigger-prod:
+    needs: manual-approval
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Prod Workflow
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GH_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/casi-frontend-prod.yaml/dispatches \
+            -d '{"ref":"main"}'

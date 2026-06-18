@@ -110,5 +110,5 @@ jobs:
           curl -X POST \
             -H "Authorization: token ${{ secrets.GH_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/casi-backend-prod.yaml/dispatches \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/casi-frontend-prod.yaml/dispatches \
             -d "{\"ref\":\"main\"}"

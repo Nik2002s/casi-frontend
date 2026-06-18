@@ -21,15 +21,10 @@ jobs:
       - name: Generate Version
         id: version
         run: |
-          BASE_VERSION="3.4.0"
-          COMMIT_COUNT=$(git rev-list --count HEAD)
-
-          IFS='.' read -r major minor patch <<< "$BASE_VERSION"
-
-          NEW_PATCH=$((patch + COMMIT_COUNT))
-          NEW_VERSION="${major}.${minor}.${NEW_PATCH}"
-
+          BASE_VERSION="3.4"
+          NEW_VERSION="${BASE_VERSION}.${{ github.run_number }}"
           echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
+          echo "Generated version: ${NEW_VERSION}"
 
       - name: Docker Login
         uses: docker/login-action@v2

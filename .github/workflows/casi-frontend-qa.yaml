@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      NEW_VERSION: ${{ steps.version.outputs.NEW_VERSION }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4

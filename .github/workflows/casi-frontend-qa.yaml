@@ -1,120 +1,110 @@
-name: Casi Frontend Workflow for QA
+name: Casi Frontend Workflow For QA
 
 on:
-workflow_dispatch:
-
-push:
-branches:
-- develop
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/*
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
 
-deploy-qa:
+    outputs:
+      version: ${{ steps.version.outputs.NEW_VERSION }}
 
-```
-runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-steps:
+      - name: Generate Version
+        id: version
+        run: |
+          BASE_VERSION="3.4.0"
+          COMMIT_COUNT=$(git rev-list --count HEAD)
 
-  - name: Checkout Repository
-    uses: actions/checkout@v4
-    with:
-      fetch-depth: 0
+          IFS='.' read -r major minor patch <<< "$BASE_VERSION"
 
+          NEW_PATCH=$((patch + COMMIT_COUNT))
+          NEW_VERSION="${major}.${minor}.${NEW_PATCH}"
 
-  - name: Generate Version
-    id: version
-    run: |
-      BASE_VERSION="3.4.0"
+          echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
 
-      COMMIT_COUNT=$(git rev-list --count HEAD)
+      - name: Docker Login
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      IFS='.' read -r major minor patch <<< "$BASE_VERSION"
+      - name: Docker Build
+        run: |
+          docker build \
+            -t ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }} .
 
-      NEW_PATCH=$((patch + COMMIT_COUNT))
+      - name: Run Trivy Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}
+          format: json
+          output: trivy-report.json
+          severity: CRITICAL,HIGH
+          exit-code: 1
+          ignore-unfixed: true
+        continue-on-error: true
 
-      NEW_VERSION="${major}.${minor}.${NEW_PATCH}"
+      - name: Push Image
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}
 
-      echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
+  deploy-qa:
+    needs: build
+    runs-on: ubuntu-latest
 
+    environment:
+      name: qa
 
-  - name: Docker Login
-    uses: docker/login-action@v3
-    with:
-      username: ${{ secrets.DOCKER_USERNAME }}
-      password: ${{ secrets.DOCKER_PASSWORD }}
+    steps:
+      - name: Deploy to Railway QA
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID_QA }}
+          ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID_QA }}
+          DOCKER_IMAGE_URL: ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ needs.build.outputs.version }}
+        run: |
+          curl --fail --silent -X POST "https://backboard.railway.com/graphql/v2" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -d "{\"query\":\"mutation ServiceInstanceUpdate(\$serviceId: String!, \$environmentId: String!, \$input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(serviceId: \$serviceId, environmentId: \$environmentId, input: \$input) }\",\"variables\":{\"serviceId\":\"$SERVICE_ID\",\"environmentId\":\"$ENVIRONMENT_ID\",\"input\":{\"source\":{\"image\":\"$DOCKER_IMAGE_URL\"}}}}"
 
+          curl --fail --silent -X POST "https://backboard.railway.com/graphql/v2" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $RAILWAY_TOKEN" \
+            -d "{\"query\":\"mutation serviceInstanceDeployV2(\$serviceId: String!, \$environmentId: String!) { serviceInstanceDeployV2(serviceId: \$serviceId, environmentId: \$environmentId) }\",\"variables\":{\"serviceId\":\"$SERVICE_ID\",\"environmentId\":\"$ENVIRONMENT_ID\"}}"
 
-  - name: Docker Build
-    run: |
-      docker build \
-      --build-arg VITE_FIREBASE_API_KEY="${{ secrets.VITE_FIREBASE_API_KEY }}" \
-      --build-arg VITE_FIREBASE_AUTH_DOMAIN="${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" \
-      --build-arg VITE_FIREBASE_PROJECT_ID="${{ secrets.VITE_FIREBASE_PROJECT_ID }}" \
-      --build-arg VITE_FIREBASE_STORAGE_BUCKET="${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" \
-      --build-arg VITE_FIREBASE_MESSAGING_SENDER_ID="${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" \
-      --build-arg VITE_FIREBASE_APP_ID="${{ secrets.VITE_FIREBASE_APP_ID }}" \
-      --build-arg VITE_FIREBASE_MEASUREMENT_ID="${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}" \
-      -t "${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}" .
+  # 🔒 Manual Approval Step
+  manual-approval:
+    needs: ["build", "deploy-qa"]
+    runs-on: ubuntu-latest
 
+    environment:
+      name: production   # MUST match your GitHub Environment
 
-  - name: Run Trivy Scan
-    uses: aquasecurity/trivy-action@master
-    with:
-      image-ref: ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}
-      format: json
-      output: trivy-report.json
-      severity: CRITICAL,HIGH
-      exit-code: 1
-      ignore-unfixed: true
-    continue-on-error: true
+    steps:
+      - name: Wait for Approval
+        run: echo "Approval required to proceed to PROD"
 
+  # 🚀 Trigger PROD workflow
+  trigger-prod:
+    needs: manual-approval
+    runs-on: ubuntu-latest
 
-  - name: Push Image
-    run: |
-      docker push \
-      ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}
-
-
-  - name: Deploy to Railway QA
-    env:
-      RAILWAY_TOKEN: ${{ secrets.RAILWAY_QA_TOKEN }}
-      SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
-      ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
-      DOCKER_IMAGE_URL: ${{ secrets.DOCKER_USERNAME }}/casi-frontend-qa:${{ steps.version.outputs.NEW_VERSION }}
-    run: |
-
-      curl --fail --silent \
-      -X POST \
-      "https://backboard.railway.com/graphql/v2" \
-      -H "Content-Type: application/json" \
-      -H "Authorization: Bearer $RAILWAY_TOKEN" \
-      -d "{\"query\":\"mutation ServiceInstanceUpdate(\$serviceId: String!, \$environmentId: String!, \$input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(serviceId: \$serviceId, environmentId: \$environmentId, input: \$input) }\",\"variables\":{\"serviceId\":\"$SERVICE_ID\",\"environmentId\":\"$ENVIRONMENT_ID\",\"input\":{\"source\":{\"image\":\"$DOCKER_IMAGE_URL\"}}}}"
-
-
-      curl --fail --silent \
-      -X POST \
-      "https://backboard.railway.com/graphql/v2" \
-      -H "Content-Type: application/json" \
-      -H "Authorization: Bearer $RAILWAY_TOKEN" \
-      -d "{\"query\":\"mutation serviceInstanceDeployV2(\$serviceId: String!, \$environmentId: String!) { serviceInstanceDeployV2(serviceId: \$serviceId, environmentId: \$environmentId) }\",\"variables\":{\"serviceId\":\"$SERVICE_ID\",\"environmentId\":\"$ENVIRONMENT_ID\"}}"
-```
-
-approval:
-
-```
-needs: deploy-qa
-
-runs-on: ubuntu-latest
-
-environment:
-
-  name: production
-
-steps:
-
-  - name: Wait for Manual Approval
-    run: |
-      echo "QA deployment successful."
-      echo "Waiting for approval before PROD deployment."
-```
+    steps:
+      - name: Trigger Prod Workflow
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.GH_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/workflows/casi-frontend-prod.yaml/dispatches \
+            -d "{\"ref\":\"main\"}"

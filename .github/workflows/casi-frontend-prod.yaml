@@ -20,9 +20,11 @@ jobs:
 
       - name: Generate Version
         id: version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           BASE_VERSION="3.4"
-          NEW_VERSION="${BASE_VERSION}.${{ github.run_number }}"
+          NEW_VERSION="${BASE_VERSION}.${RUN_NUMBER}"
           echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
           echo "Generated version: ${NEW_VERSION}"
 

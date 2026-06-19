@@ -114,7 +114,11 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/casi-frontend-prod.yaml/dispatches \
             -d "{
-              \"ref\":\"${{ github.sha }}\"
+              \"ref\":\"${{ github.ref_name }}\",
+              \"inputs\": {
+                \"commit_sha\": \"${{ github.sha }}\"
+              }
             }"
+
 
 

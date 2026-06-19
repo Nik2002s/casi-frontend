@@ -2,6 +2,9 @@ name: Casi Frontend Workflow for PROD
 
 on:
   workflow_dispatch:
+    inputs:
+      commit_sha:
+        required: true
   # push:
   #   branches:
   #     - main
@@ -15,7 +18,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: ${{ github.event.inputs.commit_sha }}
 
       - name: Generate Version (Using Build Number)
         id: version

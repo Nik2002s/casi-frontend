@@ -1,7 +1,10 @@
-name: Casi Frontend Workflow
+name: Casi Frontend Workflow for PROD
 
-on: 
+on:
   workflow_dispatch:
+    # inputs:
+    #   commit_sha:
+    #     required: true
   push:
     branches:
       - main
@@ -9,27 +12,26 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    outputs:
+      NEW_VERSION: ${{ steps.version.outputs.NEW_VERSION }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          ref: ${{ github.event.inputs.commit_sha }}
 
-      # Generate version
-      - name: Generate Version
+      - name: Generate Version (Using Build Number)
         id: version
         run: |
           BASE_VERSION="3.4.0"
-          COMMIT_COUNT=$(git rev-list --count HEAD)
+          BUILD_NUMBER=${{ github.run_number }}
 
           IFS='.' read -r major minor patch <<< "$BASE_VERSION"
-          NEW_PATCH=$((patch + COMMIT_COUNT))
-          NEW_VERSION="${major}.${minor}.${NEW_PATCH}"
+          NEW_VERSION="${major}.${minor}.${BUILD_NUMBER}"
 
           echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_OUTPUT
           echo "Generated version: ${NEW_VERSION}"
-
+      
       - name: Docker Login
         uses: docker/login-action@v2
         with:
@@ -47,6 +49,7 @@ jobs:
             --build-arg VITE_FIREBASE_APP_ID="${{ secrets.VITE_FIREBASE_APP_ID }}" \
             --build-arg VITE_FIREBASE_MEASUREMENT_ID="${{ secrets.VITE_FIREBASE_MEASUREMENT_ID }}" \
             -t "${{ secrets.DOCKER_USERNAME }}/casi-frontend-prod:${{ steps.version.outputs.NEW_VERSION }}" .
+
       - name: Run Trivy Scan
         uses: aquasecurity/trivy-action@master
         with:
@@ -61,23 +64,29 @@ jobs:
       - name: Push Image
         run: |
           docker push ${{ secrets.DOCKER_USERNAME }}/casi-frontend-prod:${{ steps.version.outputs.NEW_VERSION }}
-##Deploy to railway to PROD
 
+  deploy-prod:
+    needs: build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: production
+
+    steps:
       - name: Deploy to Railway PROD
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
           ENVIRONMENT_ID: ${{ secrets.RAILWAY_ENVIRONMENT_ID }}
-          DOCKER_IMAGE_URL: ${{ secrets.DOCKER_USERNAME }}/casi-frontend-prod:${{ steps.version.outputs.NEW_VERSION }}
+          DOCKER_IMAGE_URL: ${{ secrets.DOCKER_USERNAME }}/casi-frontend-prod:${{ needs.build.outputs.NEW_VERSION }}
         run: |
-          # Step 1: Update the Docker image source
           curl --fail --silent -X POST "https://backboard.railway.com/graphql/v2" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
             -d "{\"query\":\"mutation ServiceInstanceUpdate(\$serviceId: String!, \$environmentId: String!, \$input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(serviceId: \$serviceId, environmentId: \$environmentId, input: \$input) }\",\"variables\":{\"serviceId\":\"$SERVICE_ID\",\"environmentId\":\"$ENVIRONMENT_ID\",\"input\":{\"source\":{\"image\":\"$DOCKER_IMAGE_URL\"}}}}"
-      
-          # Step 2: Deploy the new image
+
           curl --fail --silent -X POST "https://backboard.railway.com/graphql/v2" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $RAILWAY_TOKEN" \
             -d "{\"query\":\"mutation serviceInstanceDeployV2(\$serviceId: String!, \$environmentId: String!) { serviceInstanceDeployV2(serviceId: \$serviceId, environmentId: \$environmentId) }\",\"variables\":{\"serviceId\":\"$SERVICE_ID\",\"environmentId\":\"$ENVIRONMENT_ID\"}}"
+
